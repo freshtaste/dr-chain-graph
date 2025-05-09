@@ -90,3 +90,73 @@ def sample_network(adj_matrix,
         Y[i] = np.random.binomial(1, expit(linpred_Y))
 
     return Y, A, L
+
+def sample_network_chain(
+    adj_matrix,
+    tau,       # shape (3,)
+    rho,       # shape (3, 3), with 0s on the diagonal
+    nu,        # shape (3, 3)
+    gamma,     # shape (8,)
+    beta,      # shape (10,)
+    num_iter=1000,
+    burnin=100,
+    seed=42
+):
+    np.random.seed(seed)
+    N = adj_matrix.shape[0]
+    neighbors = [np.where(adj_matrix[i])[0] for i in range(N)]
+
+    # Initialize chains
+    L_chain = np.zeros((num_iter, N, 3), dtype=int)
+    A_chain = np.zeros((num_iter, N), dtype=int)
+    Y_chain = np.zeros((num_iter, N), dtype=int)
+
+    # Initialize variables
+    L = np.random.binomial(1, 0.5, size=(N, 3))
+    A = np.random.binomial(1, 0.5, size=N)
+    Y = np.random.binomial(1, 0.5, size=N)
+
+    for m in range(num_iter):
+        i = m % N
+
+        # --- Sample L[i, :] ---
+        for k in range(3):
+            linpred = tau[k]
+            for l in range(3):
+                if l != k:
+                    linpred += rho[k, l] * L[i, l]
+                linpred += nu[k, l] * np.sum(L[neighbors[i], l])
+            L[i, k] = np.random.binomial(1, expit(linpred))
+
+        # --- Sample A[i] ---
+        linpred_A = (
+            gamma[0]
+            + gamma[1] * L[i, 0] + gamma[2] * np.sum(L[neighbors[i], 0])
+            + gamma[3] * L[i, 1] + gamma[4] * np.sum(L[neighbors[i], 1])
+            + gamma[5] * L[i, 2] + gamma[6] * np.sum(L[neighbors[i], 2])
+            + gamma[7] * np.sum(A[neighbors[i]])
+        )
+        A[i] = np.random.binomial(1, expit(linpred_A))
+
+        # --- Sample Y[i] ---
+        linpred_Y = (
+            beta[0]
+            + beta[1] * A[i] + beta[2] * np.sum(A[neighbors[i]])
+            + beta[3] * L[i, 0] + beta[4] * np.sum(L[neighbors[i], 0])
+            + beta[5] * L[i, 1] + beta[6] * np.sum(L[neighbors[i], 1])
+            + beta[7] * L[i, 2] + beta[8] * np.sum(L[neighbors[i], 2])
+            + beta[9] * np.sum(Y[neighbors[i]])
+        )
+        Y[i] = np.random.binomial(1, expit(linpred_Y))
+
+        # Save to chains
+        L_chain[m] = L.copy()
+        A_chain[m] = A.copy()
+        Y_chain[m] = Y.copy()
+
+    # Apply burn-in
+    return {
+        "Y_chain": Y_chain[burnin:],
+        "A_chain": A_chain[burnin:],
+        "L_chain": L_chain[burnin:]
+    }
