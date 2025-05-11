@@ -38,11 +38,11 @@ def fit_autog_models(Y, A, L, adj_matrix):
     L_models = []
     for k in range(3):
         X_Lk, y_Lk = prepare_features_L_k(L, k, adj_matrix)
-        model = LogisticRegression(penalty='none', solver='lbfgs', max_iter=10000)
+        model = LogisticRegression(penalty=None, solver='lbfgs', max_iter=10000)
         model.fit(X_Lk, y_Lk)
         L_models.append(model)
     X_Y = prepare_features_outcome_model(Y, A, L, adj_matrix)
-    Y_model = LogisticRegression(penalty='none', solver='lbfgs', max_iter=10000)
+    Y_model = LogisticRegression(penalty=None, solver='lbfgs', max_iter=10000)
     Y_model.fit(X_Y, Y)
     return {
         'L_models': L_models,

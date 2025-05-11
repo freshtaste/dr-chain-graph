@@ -8,7 +8,7 @@ def get_neighbor_summary(X, adj_matrix):
     return adj_matrix @ X
 
 def fit_logistic_model(X, y):
-    model = LogisticRegression(penalty='none', solver='lbfgs', max_iter=10000)
+    model = LogisticRegression(penalty=None, solver='lbfgs', max_iter=10000)
     model.fit(X, y)
     return model
 
@@ -207,7 +207,6 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000):
         "average": avg_psi_gamma,
         "direct_effect": direct_effect,
         "spillover_effect": spillover_effect,
-        "psi_gamma": np.mean(psi_gamma),
         "psi_1_gamma": np.mean(psi_1_gamma),
         "psi_0_gamma": np.mean(psi_0_gamma),
         "psi_zero": np.mean(psi_zero),

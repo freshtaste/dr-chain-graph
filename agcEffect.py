@@ -120,7 +120,6 @@ def agc_effect(
         "average": avg_psi_gamma,
         "direct_effect": direct_effect,
         "spillover_effect": spillover_effect,
-        "psi_gamma": np.mean(psi_gamma),
         "psi_1_gamma": np.mean(psi_1_gamma),
         "psi_0_gamma": np.mean(psi_0_gamma),
         "psi_zero": np.mean(psi_zero),
