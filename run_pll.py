@@ -1,5 +1,6 @@
 from drnet import doubly_robust
 from autognet import evaluate_autognet_via_agc_effect
+from ocnet import ocnet
 import numpy as np
 
 column_names = ['average', 'direct_effect', 'spillover_effect', 
@@ -26,5 +27,17 @@ def run_autognet(A_chain, L_chain, Y_chain, adj, i):
     ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
     # save results
     np.save(f'run/run_autog/autognet_{i}.npy', ret_array)
+    
+    return ret_array
+
+
+def run_ocnet(A_chain, L_chain, Y_chain, adj, i):
+    """
+    Run ocnet estimator
+    """
+    ret_i = ocnet(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=0.7, num_rep=1000, seed=1)
+    ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
+    # save results
+    np.save(f'run/run_oc/ocnet_{i}.npy', ret_array)
     
     return ret_array
