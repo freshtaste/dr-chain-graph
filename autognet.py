@@ -87,6 +87,7 @@ def evaluate_autognet_via_agc_effect(adj_matrix, Y, A, L, treatment_allocation=0
     """
     Fit autognet models and evaluate causal effects using agc_effect.
     """
+    np.random.seed(seed)
     models = fit_autog_models(Y, A, L, adj_matrix)
     tau, rho, nu, beta = extract_parameters_from_autog_models(models, adj_matrix)
     
@@ -108,5 +109,10 @@ def evaluate_autognet_via_agc_effect(adj_matrix, Y, A, L, treatment_allocation=0
     )
 
     print("psi_zero:", ret['psi_zero'])
+    print("psi_1_gamma:", ret['psi_1_gamma'])
+    print("psi_0_gamma:", ret['psi_0_gamma'])
+    print("average:", ret['average'])
+    print("direct_effect:", ret['direct_effect'])
+    print("spillover_effect:", ret['spillover_effect'])
     
     return ret

@@ -139,7 +139,9 @@ def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
     return denominator
 
 
-def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000):
+def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1):
+    np.random.seed(seed)
+    
     # fit models
     X_y = build_design_matrix_Y(A, L, Y, adj_matrix)
     model_y = fit_logistic_model(X_y, Y)
@@ -202,6 +204,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000):
     print("psi_zero:", psi_zero)
     print("beta_hat:", beta_hat.mean())
     print("psi_0_gamma:", np.mean(psi_0_gamma))
+    print("psi_1_gamma:", np.mean(psi_1_gamma))
+    print("average:", np.mean(psi_gamma))
+    print("direct_effect:", direct_effect)
+    print("spillover_effect:", spillover_effect)
     
     return {
         "average": avg_psi_gamma,
