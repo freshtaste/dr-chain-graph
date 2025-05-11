@@ -246,7 +246,7 @@ def compute_avg_effects_std_from_raw(psi_vec):
 
     # Compute HAC variance with specified lag
     lags = int(4 * (T / 100) ** (2 / 9))  # Newey-West lag rule-of-thumb
-    hac_cov = cov_hac(results, maxlags=lags)
+    hac_cov = cov_hac(results, nlags=lags)
 
     # Extract standard error
     se_hac = np.sqrt(hac_cov[0, 0])
