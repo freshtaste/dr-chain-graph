@@ -43,11 +43,12 @@ def run_ocnet(A_chain, L_chain, Y_chain, adj, i):
 
 cols_raw = ['psi_gamma', 'psi_zero', 'psi_1_gamma', 'psi_0_gamma']
 
-def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation):
+def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, psi_0_gamma_only):
     """
     Run doubly robust estimator
     """
-    ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True)
+    ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True,
+                          psi_0_gamma_only=psi_0_gamma_only)
     ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], ret_i[cols_raw[0]].shape[1], len(cols_raw)))
     for i in range(len(cols_raw)):
         ret_array[:, :, i] = ret_i[cols_raw[i]].copy()

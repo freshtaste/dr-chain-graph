@@ -139,7 +139,7 @@ def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
     return denominator
 
 
-def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False):
+def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False, psi_0_gamma_only=False):
     np.random.seed(seed)
     
     # fit models
@@ -160,25 +160,29 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     
     # compute the influence function
     a_mat = np.random.binomial(1, treatment_allocation, size=(Y.shape[0], num_rep))
-    numerator_vec, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all')
-    pi_vec = numerator_vec / denominator[:, None]
-    
-    psi_gamma = np.zeros((N, num_rep))
-    for i in range(num_rep):
-        X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
-        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all')
-        psi = beta_hat + I[:,i] / pi_vec[:, i] * (Y - beta_hat)
-        psi_gamma[:, i] = psi.copy()
-    
-    numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_1')
-    pi_1_vec = numerator / denominator[:, None]
-    psi_1_gamma = np.zeros((N, num_rep))
-    for i in range(num_rep):
-        X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
-        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_1')
-        psi = beta_hat + I[:,i] / pi_1_vec[:, i] * (Y - beta_hat)
-        psi_1_gamma[:, i] = psi.copy()
+    if psi_0_gamma_only is False:
+        numerator_vec, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all')
+        pi_vec = numerator_vec / denominator[:, None]
         
+        psi_gamma = np.zeros((N, num_rep))
+        for i in range(num_rep):
+            X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
+            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all')
+            psi = beta_hat + I[:,i] / pi_vec[:, i] * (Y - beta_hat)
+            psi_gamma[:, i] = psi.copy()
+        
+        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_1')
+        pi_1_vec = numerator / denominator[:, None]
+        psi_1_gamma = np.zeros((N, num_rep))
+        for i in range(num_rep):
+            X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
+            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_1')
+            psi = beta_hat + I[:,i] / pi_1_vec[:, i] * (Y - beta_hat)
+            psi_1_gamma[:, i] = psi.copy()
+    else:
+        psi_gamma = np.zeros((N, num_rep))
+        psi_1_gamma = np.zeros((N, num_rep))
+    
     numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_0')
     pi_0_vec = numerator / denominator[:, None]
     psi_0_gamma = np.zeros((N, num_rep))
@@ -188,14 +192,17 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         psi = beta_hat + I[:,i] / pi_0_vec[:, i] * (Y - beta_hat) 
         psi_0_gamma[:, i] = psi.copy()
     
-    a_mat = np.zeros((Y.shape[0],1))
-    numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all_0')
-    pi_zero_vec = numerator / denominator[:, None]
-    psi_zero = np.zeros((N,))
-    X_y_eval = build_design_matrix_Y(a_mat, L, Y, adj_matrix)
-    beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all_0')
-    psi =  beta_hat + I[:,0] / pi_zero_vec[:, 0] * (Y - beta_hat)
-    psi_zero = psi.copy()
+    if psi_0_gamma_only is False:
+        a_mat = np.zeros((Y.shape[0],1))
+        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all_0')
+        pi_zero_vec = numerator / denominator[:, None]
+        psi_zero = np.zeros((N,))
+        X_y_eval = build_design_matrix_Y(a_mat, L, Y, adj_matrix)
+        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all_0')
+        psi =  beta_hat + I[:,0] / pi_zero_vec[:, 0] * (Y - beta_hat)
+        psi_zero = psi.copy()
+    else:
+        psi_zero = np.zeros((N,))
     
     # Compute effects
     avg_psi_gamma = np.mean(psi_gamma)
