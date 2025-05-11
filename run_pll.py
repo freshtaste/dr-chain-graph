@@ -30,7 +30,6 @@ def run_autognet(A_chain, L_chain, Y_chain, adj, i):
     
     return ret_array
 
-
 def run_ocnet(A_chain, L_chain, Y_chain, adj, i):
     """
     Run ocnet estimator
@@ -39,5 +38,32 @@ def run_ocnet(A_chain, L_chain, Y_chain, adj, i):
     ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
     # save results
     np.save(f'run/run_oc/ocnet_{i}.npy', ret_array)
+    
+    return ret_array
+
+cols_raw = ['psi_gamma', 'psi_zero', 'psi_1_gamma', 'psi_0_gamma']
+
+def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation):
+    """
+    Run doubly robust estimator
+    """
+    ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True)
+    ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], ret_i[cols_raw[0]].shape[1], len(cols_raw)))
+    for i in range(len(cols_raw)):
+        ret_array[:, :, i] = ret_i[cols_raw[i]].copy()
+    # save results
+    np.save(f'run/run_dr_raw/drnet_raw_{i}.npy', ret_array)
+    
+    return ret_array
+
+def run_autognet_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation):
+    """
+    Run autognet estimator
+    """
+    ret_i = evaluate_autognet_via_agc_effect(adj, Y_chain[i], A_chain[i], L_chain[i], treatment_allocation=treatment_allocation, 
+                                             R=50, burnin=10, seed=1)
+    ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
+    # save results
+    np.save(f'run/run_autog_raw/autognet_raw_{i}.npy', ret_array)
     
     return ret_array

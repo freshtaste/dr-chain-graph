@@ -139,7 +139,7 @@ def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
     return denominator
 
 
-def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1):
+def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False):
     np.random.seed(seed)
     
     # fit models
@@ -201,6 +201,15 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     avg_psi_gamma = np.mean(psi_gamma)
     direct_effect = np.mean(psi_1_gamma) - np.mean(psi_0_gamma)
     spillover_effect = np.mean(psi_0_gamma) - np.mean(psi_zero)
+
+    if return_raw:
+        return {
+            'psi_gamma': psi_gamma,
+            'psi_zero': np.repeat(psi_zero[:, None], num_rep, axis=1),
+            'psi_1_gamma': psi_1_gamma,
+            'psi_0_gamma': psi_0_gamma,
+        }
+
     # print("psi_zero:", psi_zero)
     # print("beta_hat:", beta_hat.mean())
     # print("psi_0_gamma:", np.mean(psi_0_gamma))
@@ -217,3 +226,33 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         "psi_0_gamma": np.mean(psi_0_gamma),
         "psi_zero": np.mean(psi_zero),
     }
+
+
+from statsmodels.stats.sandwich_covariance import cov_hac
+from statsmodels.regression.linear_model import OLS
+
+def compute_avg_effects_std_from_raw(psi_vec):
+    """
+    Compute the average effects and their standard deviations from a given raw psi vector.
+    """
+    avg_effects = np.mean(psi_vec)
+    psi_arr = np.mean(psi_vec, axis=1)
+    # compute the HAC standard error by regression
+    T = len(psi_arr)
+    X = np.ones((T, 1))  # Constant regressor
+    Y = psi_arr.copy()
+    model = OLS(Y, X)
+    results = model.fit()
+
+    # Compute HAC variance with specified lag
+    lags = int(4 * (T / 100) ** (2 / 9))  # Newey-West lag rule-of-thumb
+    hac_cov = cov_hac(results, maxlags=lags)
+
+    # Extract standard error
+    se_hac = np.sqrt(hac_cov[0, 0])
+    # theta_hat = np.mean(Y)
+    # print(f"theta_hat: {theta_hat:.4f}")
+    # print(f"HAC standard error: {se_hac:.4f}")
+
+    return avg_effects, se_hac
+    
