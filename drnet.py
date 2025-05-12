@@ -211,10 +211,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
 
     if return_raw:
         return {
-            'psi_gamma': psi_gamma,
-            'psi_zero': np.repeat(psi_zero[:, None], num_rep, axis=1),
-            'psi_1_gamma': psi_1_gamma,
-            'psi_0_gamma': psi_0_gamma,
+            'psi_gamma': np.mean(psi_gamma, axis=1),
+            'psi_zero': psi_zero,
+            'psi_1_gamma': np.mean(psi_1_gamma, axis=1),
+            'psi_0_gamma': np.mean(psi_0_gamma, axis=1),
         }
 
     # print("psi_zero:", psi_zero)
@@ -243,7 +243,7 @@ def compute_avg_effects_std_from_raw(psi_vec):
     Compute the average effects and their standard deviations from a given raw psi vector.
     """
     avg_effects = np.mean(psi_vec)
-    psi_arr = np.mean(psi_vec, axis=1)
+    psi_arr = psi_vec.copy()
     # compute the HAC standard error by regression
     T = len(psi_arr)
     X = np.ones((T, 1))  # Constant regressor

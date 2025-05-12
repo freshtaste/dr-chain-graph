@@ -49,9 +49,9 @@ def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, psi_0_ga
     """
     ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True,
                           psi_0_gamma_only=psi_0_gamma_only)
-    ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], ret_i[cols_raw[0]].shape[1], len(cols_raw)))
-    for i in range(len(cols_raw)):
-        ret_array[:, :, i] = ret_i[cols_raw[i]].copy()
+    ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], len(cols_raw)))
+    for k in range(len(cols_raw)):
+        ret_array[:, k] = ret_i[cols_raw[k]].copy()
     # save results
     np.save(f'run/run_dr_raw/drnet_raw_{i}.npy', ret_array)
     

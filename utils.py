@@ -40,7 +40,7 @@ from tqdm import tqdm
 def compute_stats(res_list_array_dr1, res_list_array_dr2, ground_truth):
     """
     Compute statistics from the results list. 
-    res_list_array_dr: (n_sim, N, n_rep, 4)
+    res_list_array_dr: (n_sim, N, n_rep, 4) -> (n_sim, N, 4)
     """
     # compute the mean and standard deviation of the estimates
     effects_to_consider = ['average', 'direct', 'indirect', 'spillover_effect']
@@ -49,10 +49,10 @@ def compute_stats(res_list_array_dr1, res_list_array_dr2, ground_truth):
     estimates = np.zeros((res_list_array_dr1.shape[0], len(effects_to_consider)))
     std_hac = np.zeros((res_list_array_dr1.shape[0], len(effects_to_consider)))
     for i in tqdm(range(res_list_array_dr1.shape[0])):
-        res_avg = res_list_array_dr1[i,:,:,cols_raw.index('psi_gamma')]
-        res_direct = res_list_array_dr1[i,:,:,cols_raw.index('psi_1_gamma')] - res_list_array_dr1[i,:,:,cols_raw.index('psi_0_gamma')]
-        res_indirect = res_list_array_dr1[i,:,:,cols_raw.index('psi_0_gamma')] - res_list_array_dr2[i,:,:,cols_raw.index('psi_0_gamma')]
-        res_spillover = res_list_array_dr1[i,:,:,cols_raw.index('psi_0_gamma')] - res_list_array_dr1[i,:,:,cols_raw.index('psi_zero')]
+        res_avg = res_list_array_dr1[i,:,cols_raw.index('psi_gamma')]
+        res_direct = res_list_array_dr1[i,:,cols_raw.index('psi_1_gamma')] - res_list_array_dr1[i,:,cols_raw.index('psi_0_gamma')]
+        res_indirect = res_list_array_dr1[i,:,cols_raw.index('psi_0_gamma')] - res_list_array_dr2[i,:,cols_raw.index('psi_0_gamma')]
+        res_spillover = res_list_array_dr1[i,:,cols_raw.index('psi_0_gamma')] - res_list_array_dr1[i,:,cols_raw.index('psi_zero')]
         
 
         avg_effects_avg, se_hac_avg = compute_avg_effects_std_from_raw(res_avg)
