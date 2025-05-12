@@ -191,17 +191,16 @@ def sample_network_chain2(
             A[i] = np.random.binomial(1, expit(linpred_A))
 
         Y_old = Y.copy()
-        X = np.random.binomial(1, 0.5, size=(N, 3))
         for i in range(N):
             # --- Sample Y[i] ---
-            two_hop_neighbors = [q for p in neighbors[0] for q in neighbors[p] if q != 0]
+            #two_hop_neighbors = [q for p in neighbors[0] for q in neighbors[p] if q != 0]
             linpred_Y = (
                 beta[0]
                 + beta[1] * A[i] + beta[2] * np.sum(A[neighbors[i]])
-                + beta[3] * X[i, 0] * A[i] + beta[4] * np.sum(X[neighbors[i], 0]) * np.sum(A[neighbors[i]])
-                + beta[5] * X[i, 1] * A[i] + beta[6] * np.sum(X[neighbors[i], 1]) * np.sum(A[neighbors[i]])
-                + beta[7] * X[i, 2] * A[i] + beta[8] * np.sum(X[neighbors[i], 2]) * np.sum(A[neighbors[i]])
-                + beta[9] * np.sum(X[two_hop_neighbors])
+                + beta[3] * L[i, 0] * A[i] + beta[4] * np.sum(L[neighbors[i], 0]) * np.sum(A[neighbors[i]])
+                + beta[5] * L[i, 1] * A[i] + beta[6] * np.sum(L[neighbors[i], 1]) * np.sum(A[neighbors[i]])
+                + beta[7] * L[i, 2] * A[i] + beta[8] * np.sum(L[neighbors[i], 2]) * np.sum(A[neighbors[i]])
+                + beta[9] * A[i] * np.sum(A[neighbors[i]])
             )
             Y[i] = np.random.binomial(1, expit(linpred_Y))
 
