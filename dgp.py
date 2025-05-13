@@ -1,7 +1,39 @@
 import numpy as np
 from tqdm import tqdm
+import networkx as nx
 
-def get_graph(N, min_degree=2, max_degree=5, seed=0):
+def get_graph(N, m=2, max_degree=10, seed=0):
+    """
+    Modified Barabási-Albert model with maximum degree constraint.
+    """
+    np.random.seed(seed)
+    G = nx.empty_graph(m)  # Start with m isolated nodes
+    targets = list(range(m))
+    repeated_nodes = list(targets)
+
+    for new_node in range(m, N):
+        # Filter eligible targets (nodes with degree < max_degree)
+        eligible = [node for node in repeated_nodes if G.degree[node] < max_degree]
+        eligible = list(set(eligible))  # Remove duplicates
+
+        # If not enough eligible nodes, connect to random nodes
+        if len(eligible) < m:
+            targets = np.random.choice(list(G.nodes), size=m, replace=False)
+        else:
+            probs = np.array([G.degree[node] for node in eligible], dtype=float)
+            probs = probs/probs.sum() if probs.sum() > 0 else np.ones(len(eligible))/len(eligible)
+            targets = np.random.choice(eligible, size=m, replace=False, p=probs)
+
+        for target in targets:
+            G.add_edge(new_node, target)
+
+        # Update repeated_nodes list
+        repeated_nodes.extend(targets)
+        repeated_nodes.extend([new_node] * m)
+
+    return nx.to_numpy_array(G, dtype=int)
+
+def get_graph_old(N, min_degree=2, max_degree=5, seed=0):
     """
     Generate a symmetric adjacency matrix of an undirected graph where each node has:
       - at least `min_degree` neighbors
