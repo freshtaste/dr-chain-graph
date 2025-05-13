@@ -12,6 +12,26 @@ def fit_logistic_model(X, y):
     model.fit(X, y)
     return model
 
+def get_2hop_neighbors(adj_matrix):
+    """
+    Returns for each node:
+      - one_hop: list of direct neighbors
+      - two_hop: list of neighbors-of-neighbors excluding direct neighbors and the node itself
+    """
+    N = adj_matrix.shape[0]
+    one_hop = [list(np.where(adj_matrix[i])[0]) for i in range(N)]
+    two_hop = []
+    for i in range(N):
+        # gather neighbors of neighbors
+        second = set()
+        for j in one_hop[i]:
+            second.update(list(np.where(adj_matrix[j])[0]))
+        # remove direct neighbors and self
+        second.difference_update(one_hop[i])
+        second.discard(i)
+        two_hop.append(sorted(second))
+    return one_hop, two_hop
+
 def build_design_matrix_Y(A, L, Y, adj_matrix):
     A_nb = get_neighbor_summary(A.reshape(-1, 1), adj_matrix).flatten()
     L_nb = get_neighbor_summary(L, adj_matrix)
@@ -76,7 +96,7 @@ def get_numerator_pi(a_vector, A, GL, neighbours, gamma, adj_matrix, Atype='ind_
     numerator = np.exp(GL_neighbour + gamma[7]*aa_n + gamma[7]*aa_out)
     return numerator
 
-def get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_1'):
+def get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='ind_treat_1'):
     N = adj_matrix.shape[0]
     aGL = (a_mat.T * GL).T
     
@@ -85,7 +105,19 @@ def get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind
     I = np.zeros((N, a_mat.shape[1]))
     for i in range(N):
         ni = [i]+neighbours[i]
-        vec_n = a_mat[ni].copy()
+        # compute indicator
+        if Atype == 'all' or Atype == 'all_0':
+            I[i] = np.all(a_mat[ni] == A[ni].reshape(-1,1), axis=0).astype(int)
+        elif Atype == 'ind_treat_0':
+            a_mat_local = a_mat[ni].copy()
+            a_mat_local[0] = 0
+            I[i] = np.all(a_mat_local == A[ni].reshape(-1,1), axis=0).astype(int)
+        elif Atype == 'ind_treat_1':
+            a_mat_local = a_mat[ni].copy()
+            a_mat_local[0] = 1
+            I[i] = np.all(a_mat_local == A[ni].reshape(-1,1), axis=0).astype(int)
+        vec_n = a_mat[ni][:,I[i]==1].copy()
+
         if Atype == 'ind_treat_1':
             vec_n[0] = 1
         elif Atype == 'ind_treat_0':
@@ -93,21 +125,19 @@ def get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind
         # compute outter product
         mat_n = np.einsum('ik,jk->ijk', vec_n, vec_n)
         adj_max_n = adj_matrix[ni, :][:, ni]
-        aa_n[i] = (mat_n * adj_max_n[:, :, None]).sum(axis=(0, 1))/2
+        aa_n[i, I[i]==1] = (mat_n * adj_max_n[:, :, None]).sum(axis=(0, 1))/2
         
-        nout = list(set(range(N)) - set(ni))
+        nout = neighbours_2hop[i]
         vec_n_out = A[nout].copy()
         mat_n_out = np.einsum('ik,j->ijk', vec_n, vec_n_out)
         adj_max_n_out = adj_matrix[ni, :][:, nout]
-        aa_out[i] = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
+        aa_out[i, I[i]==1] = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
         
-        # compute indicator
-        I[i] = np.all(vec_n == A[ni].reshape(-1,1), axis=0).astype(int)
     
     numerator = np.exp(GL_neighbour + gamma[7]*aa_n + gamma[7]*aa_out)
     return numerator, I
 
-def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
+def get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, n_rep=1000):
     # compute denominator
     N = adj_matrix.shape[0]
     a_mat = np.random.binomial(1, 0.5, size=(N, n_rep))
@@ -122,7 +152,7 @@ def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
         adj_max_n = adj_matrix[ni, :][:, ni]
         aa_n[i] = (mat_n * adj_max_n[:, :, None]).sum(axis=(0, 1))/2
         
-        nout = list(set(range(N)) - set(ni))
+        nout = neighbours_2hop[i]
         vec_n_out = A[nout] # 790 by 1
         mat_n_out = np.einsum('ik,j->ijk', vec_n, vec_n_out)
         adj_max_n_out = adj_matrix[ni, :][:, nout]
@@ -138,7 +168,6 @@ def get_norm_constant(A, GL, neighbours, gamma, adj_matrix, n_rep=1000):
     
     return denominator
 
-
 def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False, psi_0_gamma_only=False):
     np.random.seed(seed)
     
@@ -151,17 +180,17 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     # compute pi
     gamma = np.concatenate([model_a.intercept_, model_a.coef_.flatten()])
     N = adj_matrix.shape[0]
-    neighbours = [list(adj_matrix[i].nonzero()[0]) for i in range(N)]
+    neighbours, neighbours_2hop = get_2hop_neighbors(adj_matrix)
     L_nb = get_neighbor_summary(L, adj_matrix)
     GL = gamma[0] + L.dot(np.array([gamma[1], gamma[3], gamma[5]])) \
         + L_nb.dot(np.array([gamma[2], gamma[4], gamma[6]]))
         
-    denominator = get_norm_constant(A, GL, neighbours, gamma, adj_matrix)
+    denominator = get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix)
     
     # compute the influence function
     a_mat = np.random.binomial(1, treatment_allocation, size=(Y.shape[0], num_rep))
     if psi_0_gamma_only is False:
-        numerator_vec, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all')
+        numerator_vec, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='all')
         pi_vec = numerator_vec / denominator[:, None]
         psi_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
@@ -172,7 +201,7 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
             psi = beta_hat + w_norm * (Y - beta_hat)
             psi_gamma[:, i] = psi.copy()
         
-        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_1')
+        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='ind_treat_1')
         pi_1_vec = numerator / denominator[:, None]
         psi_1_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
@@ -186,7 +215,7 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         psi_gamma = np.zeros((N, num_rep))
         psi_1_gamma = np.zeros((N, num_rep))
     
-    numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='ind_treat_0')
+    numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='ind_treat_0')
     pi_0_vec = numerator / denominator[:, None]
     psi_0_gamma = np.zeros((N, num_rep))
     for i in range(num_rep):
@@ -199,7 +228,7 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     
     if psi_0_gamma_only is False:
         a_mat = np.zeros((Y.shape[0],1))
-        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, gamma, adj_matrix, Atype='all_0')
+        numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='all_0')
         pi_zero_vec = numerator / denominator[:, None]
         psi_zero = np.zeros((N,))
         X_y_eval = build_design_matrix_Y(a_mat, L, Y, adj_matrix)
