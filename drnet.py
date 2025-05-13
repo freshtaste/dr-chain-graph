@@ -273,7 +273,7 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
 
 import networkx as nx
 
-def compute_avg_effects_std_from_raw(psi_vec, adj_matrix, h=2):
+def compute_avg_effects_std_from_raw(psi_vec, adj_matrix, h=3):
     """
     Compute the average effect and its network-HAC standard deviation using a Bartlett kernel.
     
@@ -304,6 +304,6 @@ def compute_avg_effects_std_from_raw(psi_vec, adj_matrix, h=2):
             hac_var += weight * g[i] * g[j]
     
     hac_var /= N
-    se_hac = np.sqrt(hac_var)
+    se_hac = np.sqrt(hac_var)/np.sqrt(N)
 
     return avg_effects, se_hac
