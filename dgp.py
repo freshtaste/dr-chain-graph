@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 import networkx as nx
+from scipy.special import expit
 
 def get_graph(N, m=2, max_degree=10, seed=0):
     """
@@ -33,213 +34,201 @@ def get_graph(N, m=2, max_degree=10, seed=0):
 
     return nx.to_numpy_array(G, dtype=int)
 
-def get_graph_old(N, min_degree=2, max_degree=5, seed=0):
-    """
-    Generate a symmetric adjacency matrix of an undirected graph where each node has:
-      - at least `min_degree` neighbors
-      - at most `max_degree` neighbors
-    """
-    np.random.seed(seed)
-    adj_matrix = np.zeros((N, N), dtype=int)
-    degree = np.zeros(N, dtype=int)
-    degrees = np.random.randint(min_degree, max_degree + 1, size=N)
+def sample_L(L, adj_matrix, tau, rho, nu):
+    N = L.shape[0]
+    L_old = L.copy()
+    
+    # Neighbor summaries for each latent feature
+    L_nb_0 = adj_matrix @ L_old[:, 0]
+    L_nb_1 = adj_matrix @ L_old[:, 1]
+    L_nb_2 = adj_matrix @ L_old[:, 2]
 
-    # Candidate edges (i < j to avoid duplicates in symmetric matrix)
-    candidates = [(i, j) for i in range(N) for j in range(i + 1, N)]
-    np.random.shuffle(candidates)
+    # Compute each linpred separately with explicit coefficients
+    linpred_L1 = (
+        tau[0]
+        + rho[0, 1] * L_old[:, 1]
+        + rho[0, 2] * L_old[:, 2]
+        + nu[0, 0] * L_nb_0
+        + nu[0, 1] * L_nb_1
+        + nu[0, 2] * L_nb_2
+    )
+    linpred_L2 = (
+        tau[1]
+        + rho[1, 0] * L_old[:, 0]
+        + rho[1, 2] * L_old[:, 2]
+        + nu[1, 0] * L_nb_0
+        + nu[1, 1] * L_nb_1
+        + nu[1, 2] * L_nb_2
+    )
+    linpred_L3 = (
+        tau[2]
+        + rho[2, 0] * L_old[:, 0]
+        + rho[2, 1] * L_old[:, 1]
+        + nu[2, 0] * L_nb_0
+        + nu[2, 1] * L_nb_1
+        + nu[2, 2] * L_nb_2
+    )
 
-    for (i, j) in candidates:
-        if degree[i] < degrees[i] and degree[j] < degrees[j]:
-            adj_matrix[i, j] = 1
-            adj_matrix[j, i] = 1
-            degree[i] += 1
-            degree[j] += 1
+    # Convert to probabilities
+    prob_L1 = expit(linpred_L1)
+    prob_L2 = expit(linpred_L2)
+    prob_L3 = expit(linpred_L3)
 
-    # Fix nodes with degree < min_degree by connecting to random nodes
-    for i in range(N):
-        while degree[i] < degrees[i]:
-            # Potential new connections: not self, not already connected, target degree < max
-            possible = [j for j in range(N)
-                        if j != i and adj_matrix[i, j] == 0 and degree[j] < max_degree]
-            if not possible:
-                break  # cannot fix further due to global constraints
-            j = np.random.choice(possible)
-            adj_matrix[i, j] = 1
-            adj_matrix[j, i] = 1
-            degree[i] += 1
-            degree[j] += 1
+    # Sample each L[:, d] separately
+    L[:, 0] = np.random.binomial(1, prob_L1)
+    L[:, 1] = np.random.binomial(1, prob_L2)
+    L[:, 2] = np.random.binomial(1, prob_L3)
 
-    return adj_matrix
+    return L
 
-def expit(x):
-    return 1 / (1 + np.exp(-x))
+
+def sample_A(A, L, adj_matrix, gamma):
+    L_nb = adj_matrix @ L
+    A_nb = adj_matrix @ A
+
+    linpred = (
+        gamma[0]
+        + gamma[1] * L[:, 0] + gamma[2] * L_nb[:, 0]
+        + gamma[3] * L[:, 1] + gamma[4] * L_nb[:, 1]
+        + gamma[5] * L[:, 2] + gamma[6] * L_nb[:, 2]
+        + gamma[7] * A_nb
+    )
+    probs = expit(linpred)
+    A[:] = np.random.binomial(1, probs)
+    return A
+
+def sample_Y1(Y, A, L, adj_matrix, beta, Atype='all'):
+    L_nb = adj_matrix @ L
+    A_nb = adj_matrix @ A
+    Y_nb = adj_matrix @ Y
+    if Atype == 'all' or Atype == 'gen':
+        A_self = A.copy()
+    elif Atype == 'ind_treat_1':
+        A_self = np.ones_like(A)
+    elif Atype == 'ind_treat_0':
+        A_self = np.zeros_like(A)
+    elif Atype == 'all_0':
+        A_self = np.zeros_like(A)
+        A_nb = np.zeros_like(A)
+    else:
+        raise ValueError("Invalid Atype. Choose from 'all', 'ind_treat_1', 'ind_treat_0', or 'all_0'.")
+
+    linpred = (
+        beta[0]
+        + beta[1] * A_self + beta[2] * A_nb
+        + beta[3] * L[:, 0] + beta[4] * L_nb[:, 0]
+        + beta[5] * L[:, 1] + beta[6] * L_nb[:, 1]
+        + beta[7] * L[:, 2] + beta[8] * L_nb[:, 2]
+        + beta[9] * Y_nb
+    )
+    probs = expit(linpred)
+    Y[:] = np.random.binomial(1, probs)
+    return Y
+
+def sample_Y2(Y, A, L, adj_matrix, beta, Atype='all'):
+    L_nb = adj_matrix @ L
+    A_nb = adj_matrix @ A
+    if Atype == 'all' or Atype == 'gen':
+        A_self = A.copy()
+    elif Atype == 'ind_treat_1':
+        A_self = np.ones_like(A)
+    elif Atype == 'ind_treat_0':
+        A_self = np.zeros_like(A)
+    elif Atype == 'all_0':
+        A_self = np.zeros_like(A)
+        A_nb = np.zeros_like(A)
+    else:
+        raise ValueError("Invalid Atype. Choose from 'all', 'ind_treat_1', 'ind_treat_0', or 'all_0'.")
+
+    linpred = (
+        beta[0]
+        + beta[1] * A_self + beta[2] * A_nb
+        + beta[3] * L[:, 0] * A + beta[4] * L_nb[:, 0] * A_nb
+        + beta[5] * L[:, 1] * A + beta[6] * L_nb[:, 1] * A_nb
+        + beta[7] * L[:, 2] * A + beta[8] * L_nb[:, 2] * A_nb
+        + beta[9] * A * A_nb
+    )
+    probs = expit(linpred)
+    Y[:] = np.random.binomial(1, probs)
+    return Y
 
 def sample_network_chain(
     adj_matrix,
-    tau,       # shape (3,)
-    rho,       # shape (3, 3), with 0s on the diagonal
-    nu,        # shape (3, 3)
-    gamma,     # shape (8,)
-    beta,      # shape (10,)
-    R=10,
-    burnin_R=100,
-    seed=42
+    tau, rho, nu, gamma, beta,
+    R=50, burnin_R=10, seed=42,
+    sample_Y_func=None,
+    Atype=('gen', 0.7)
 ):
     np.random.seed(seed)
     N = adj_matrix.shape[0]
-    neighbors = [np.where(adj_matrix[i])[0] for i in range(N)]
 
     # Initialize chains
-    L_chain = np.zeros((R+burnin_R, N, 3), dtype=int)
-    A_chain = np.zeros((R+burnin_R, N), dtype=int)
-    Y_chain = np.zeros((R+burnin_R, N), dtype=int)
+    L_chain = np.zeros((R + burnin_R, N, 3), dtype=int)
+    A_chain = np.zeros((R + burnin_R, N), dtype=int)
+    Y_chain = np.zeros((R + burnin_R, N), dtype=int)
 
-    # Initialize variables
+    # Initial values
     L = np.random.binomial(1, 0.5, size=(N, 3))
     A = np.random.binomial(1, 0.5, size=N)
     Y = np.random.binomial(1, 0.5, size=N)
 
-    R = R + burnin_R  # Total iterations including burn-in
-    for m in tqdm(range(R)):
+    # Default functions if not supplied
+    if sample_Y_func is None:
+        raise ValueError("You must provide a sampling function for Y (sample_Y_func).")
 
-        L_old = L.copy()
-        for i in range(N):
-            # --- Sample L[i, :] ---
-            linpred_L1 = tau[0] + rho[0, 1] * L[i, 1] + rho[0, 2] * L[i, 2]\
-                    + nu[0, 0] * np.sum(L_old[neighbors[i], 0]) \
-                    + nu[0, 1] * np.sum(L_old[neighbors[i], 1]) \
-                    + nu[0, 2] * np.sum(L_old[neighbors[i], 2])
-            linpred_L2 = tau[1] + rho[1, 0] * L[i, 0] + rho[1, 2] * L[i, 2]\
-                + nu[1, 0] * np.sum(L_old[neighbors[i], 0]) \
-                + nu[1, 1] * np.sum(L_old[neighbors[i], 1]) \
-                + nu[1, 2] * np.sum(L_old[neighbors[i], 2])
-            linpred_L3 = tau[2] + rho[2, 0] * L[i, 0] + rho[2, 1] * L[i, 1]\
-                + nu[2, 0] * np.sum(L_old[neighbors[i], 0]) \
-                + nu[2, 1] * np.sum(L_old[neighbors[i], 1]) \
-                + nu[2, 2] * np.sum(L_old[neighbors[i], 2])
-                
-            prob_L1 = expit(linpred_L1)
-            prob_L2 = expit(linpred_L2)
-            prob_L3 = expit(linpred_L3)
-            L[i, 0] = np.random.binomial(1, prob_L1)
-            L[i, 1] = np.random.binomial(1, prob_L2)
-            L[i, 2] = np.random.binomial(1, prob_L3) 
-        
+    for m in tqdm(range(R + burnin_R)):
+        L = sample_L(L, adj_matrix, tau, rho, nu)
+        if Atype[0] == 'gen':
+            A = sample_A(A, L, adj_matrix, gamma)
+        else:
+            A = np.random.binomial(1, Atype[1], size=N)
+        Y = sample_Y_func(Y, A, L, adj_matrix, beta, Atype=Atype[0])
 
-        for i in range(N):
-            # --- Sample A[i] ---
-            linpred_A = (
-                gamma[0]
-                + gamma[1] * L[i, 0] + gamma[2] * np.sum(L[neighbors[i], 0])
-                + gamma[3] * L[i, 1] + gamma[4] * np.sum(L[neighbors[i], 1])
-                + gamma[5] * L[i, 2] + gamma[6] * np.sum(L[neighbors[i], 2])
-                + gamma[7] * np.sum(A[neighbors[i]])
-            )
-            A[i] = np.random.binomial(1, expit(linpred_A))
-
-        Y_old = Y.copy()
-        for i in range(N):
-            # --- Sample Y[i] ---
-            linpred_Y = (
-                beta[0]
-                + beta[1] * A[i] + beta[2] * np.sum(A[neighbors[i]])
-                + beta[3] * L[i, 0] + beta[4] * np.sum(L[neighbors[i], 0])
-                + beta[5] * L[i, 1] + beta[6] * np.sum(L[neighbors[i], 1])
-                + beta[7] * L[i, 2] + beta[8] * np.sum(L[neighbors[i], 2])
-                + beta[9] * np.sum(Y_old[neighbors[i]])
-            )
-            Y[i] = np.random.binomial(1, expit(linpred_Y))
-
-        # Save to chains
         L_chain[m] = L.copy()
         A_chain[m] = A.copy()
         Y_chain[m] = Y.copy()
 
-    # Apply burn-in
-    return  Y_chain[burnin_R:], A_chain[burnin_R:], L_chain[burnin_R:]
+    return Y_chain[burnin_R:], A_chain[burnin_R:], L_chain[burnin_R:]
 
 
-def sample_network_chain2(
+def agcEffect(
     adj_matrix,
-    tau,       # shape (3,)
-    rho,       # shape (3, 3), with 0s on the diagonal
-    nu,        # shape (3, 3)
-    gamma,     # shape (8,)
-    beta,      # shape (10,)
+    tau, rho, nu, beta,
+    treatment_allocation=0.5,
     R=10,
-    burnin_R=100,
-    seed=42
+    burnin_R=5,
+    seed=0,
+    sample_Y_func=sample_Y1,
 ):
     np.random.seed(seed)
     N = adj_matrix.shape[0]
-    neighbors = [np.where(adj_matrix[i])[0] for i in range(N)]
 
-    # Initialize chains
-    L_chain = np.zeros((R+burnin_R, N, 3), dtype=int)
-    A_chain = np.zeros((R+burnin_R, N), dtype=int)
-    Y_chain = np.zeros((R+burnin_R, N), dtype=int)
+    psi_gamma, psi_zero, psi_1_gamma, psi_0_gamma = [], [], [], []
+    Y_chain, _, L_chain = sample_network_chain(adj_matrix, tau, rho, nu, None, beta, R=R, burnin_R=burnin_R, seed=seed, sample_Y_func=sample_Y_func, Atype=('all', treatment_allocation))
+    for Y, L in zip(Y_chain, L_chain):
+        psi_gamma.append(np.mean(Y))
+    
+    Y_chain, _, L_chain = sample_network_chain(adj_matrix, tau, rho, nu, None, beta, R=R, burnin_R=burnin_R, seed=seed, sample_Y_func=sample_Y_func, Atype=('ind_treat_1', treatment_allocation))
+    for Y, L in zip(Y_chain, L_chain):
+        psi_1_gamma.append(np.mean(Y))
 
-    # Initialize variables
-    L = np.random.binomial(1, 0.5, size=(N, 3))
-    A = np.random.binomial(1, 0.5, size=N)
-    Y = np.random.binomial(1, 0.5, size=N)
+    Y_chain, _, L_chain = sample_network_chain(adj_matrix, tau, rho, nu, None, beta, R=R, burnin_R=burnin_R, seed=seed, sample_Y_func=sample_Y_func, Atype=('ind_treat_0', treatment_allocation))
+    for Y, L in zip(Y_chain, L_chain):
+        psi_0_gamma.append(np.mean(Y))
 
-    R = R + burnin_R  # Total iterations including burn-in
-    for m in tqdm(range(R)):
-
-        L_old = L.copy()
-        for i in range(N):
-            # --- Sample L[i, :] ---
-            linpred_L1 = tau[0] + rho[0, 1] * L[i, 1] + rho[0, 2] * L[i, 2]\
-                    + nu[0, 0] * np.sum(L_old[neighbors[i], 0]) \
-                    + nu[0, 1] * np.sum(L_old[neighbors[i], 1]) \
-                    + nu[0, 2] * np.sum(L_old[neighbors[i], 2])
-            linpred_L2 = tau[1] + rho[1, 0] * L[i, 0] + rho[1, 2] * L[i, 2]\
-                + nu[1, 0] * np.sum(L_old[neighbors[i], 0]) \
-                + nu[1, 1] * np.sum(L_old[neighbors[i], 1]) \
-                + nu[1, 2] * np.sum(L_old[neighbors[i], 2])
-            linpred_L3 = tau[2] + rho[2, 0] * L[i, 0] + rho[2, 1] * L[i, 1]\
-                + nu[2, 0] * np.sum(L_old[neighbors[i], 0]) \
-                + nu[2, 1] * np.sum(L_old[neighbors[i], 1]) \
-                + nu[2, 2] * np.sum(L_old[neighbors[i], 2])
-                
-            prob_L1 = expit(linpred_L1)
-            prob_L2 = expit(linpred_L2)
-            prob_L3 = expit(linpred_L3)
-            L[i, 0] = np.random.binomial(1, prob_L1)
-            L[i, 1] = np.random.binomial(1, prob_L2)
-            L[i, 2] = np.random.binomial(1, prob_L3) 
-        
-
-        for i in range(N):
-            # --- Sample A[i] ---
-            linpred_A = (
-                gamma[0]
-                + gamma[1] * L[i, 0] + gamma[2] * np.sum(L[neighbors[i], 0])
-                + gamma[3] * L[i, 1] + gamma[4] * np.sum(L[neighbors[i], 1])
-                + gamma[5] * L[i, 2] + gamma[6] * np.sum(L[neighbors[i], 2])
-                + gamma[7] * np.sum(A[neighbors[i]])
-            )
-            A[i] = np.random.binomial(1, expit(linpred_A))
-
-        Y_old = Y.copy()
-        for i in range(N):
-            # --- Sample Y[i] ---
-            #two_hop_neighbors = [q for p in neighbors[0] for q in neighbors[p] if q != 0]
-            linpred_Y = (
-                beta[0]
-                + beta[1] * A[i] + beta[2] * np.sum(A[neighbors[i]])
-                + beta[3] * L[i, 0] * A[i] + beta[4] * np.sum(L[neighbors[i], 0]) * np.sum(A[neighbors[i]])
-                + beta[5] * L[i, 1] * A[i] + beta[6] * np.sum(L[neighbors[i], 1]) * np.sum(A[neighbors[i]])
-                + beta[7] * L[i, 2] * A[i] + beta[8] * np.sum(L[neighbors[i], 2]) * np.sum(A[neighbors[i]])
-                + beta[9] * A[i] * np.sum(A[neighbors[i]])
-            )
-            Y[i] = np.random.binomial(1, expit(linpred_Y))
-
-        # Save to chains
-        L_chain[m] = L.copy()
-        A_chain[m] = A.copy()
-        Y_chain[m] = Y.copy()
-
-    # Apply burn-in
-    return  Y_chain[burnin_R:], A_chain[burnin_R:], L_chain[burnin_R:]
+    Y_chain, _, L_chain = sample_network_chain(adj_matrix, tau, rho, nu, None, beta, R=R, burnin_R=burnin_R, seed=seed, sample_Y_func=sample_Y_func, Atype=('all_0', treatment_allocation))
+    for Y, L in zip(Y_chain, L_chain):
+        psi_zero.append(np.mean(Y))
+    
+    # Compute effects
+    avg_psi_gamma = np.mean(psi_gamma)
+    direct_effect = np.mean(psi_1_gamma) - np.mean(psi_0_gamma)
+    spillover_effect = np.mean(psi_0_gamma) - np.mean(psi_zero)
+    return {
+        "average": avg_psi_gamma,
+        "direct_effect": direct_effect,
+        "spillover_effect": spillover_effect,
+        "psi_1_gamma": np.mean(psi_1_gamma),
+        "psi_0_gamma": np.mean(psi_0_gamma),
+        "psi_zero": np.mean(psi_zero),
+    }
