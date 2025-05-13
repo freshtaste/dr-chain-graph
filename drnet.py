@@ -271,31 +271,39 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     }
 
 
-from statsmodels.stats.sandwich_covariance import cov_hac
-from statsmodels.regression.linear_model import OLS
+import networkx as nx
 
-def compute_avg_effects_std_from_raw(psi_vec):
+def compute_avg_effects_std_from_raw(psi_vec, adj_matrix, h=2):
     """
-    Compute the average effects and their standard deviations from a given raw psi vector.
+    Compute the average effect and its network-HAC standard deviation using a Bartlett kernel.
+    
+    Parameters:
+        psi_vec: np.ndarray of shape (N,), raw influence function values
+        adj_matrix: np.ndarray of shape (N, N), adjacency matrix of the network
+        h: int, maximum distance for Bartlett kernel
+        
+    Returns:
+        avg_effects: float, average of psi_vec
+        se_hac: float, standard error adjusted for network dependence
     """
+    N = len(psi_vec)
     avg_effects = np.mean(psi_vec)
-    psi_arr = psi_vec.copy()
-    # compute the HAC standard error by regression
-    T = len(psi_arr)
-    X = np.ones((T, 1))  # Constant regressor
-    Y = psi_arr.copy()
-    model = OLS(Y, X)
-    results = model.fit()
-
-    # Compute HAC variance with specified lag
-    lags = int(4 * (T / 100) ** (2 / 9))  # Newey-West lag rule-of-thumb
-    hac_cov = cov_hac(results, nlags=lags)
-
-    # Extract standard error
-    se_hac = np.sqrt(hac_cov[0, 0])
-    # theta_hat = np.mean(Y)
-    # print(f"theta_hat: {theta_hat:.4f}")
-    # print(f"HAC standard error: {se_hac:.4f}")
+    
+    # Centered residuals
+    g = psi_vec - avg_effects
+    
+    # Build graph and compute pairwise distances
+    G = nx.from_numpy_array(adj_matrix)
+    dist = dict(nx.all_pairs_shortest_path_length(G, cutoff=h))
+    
+    # Network HAC estimator
+    hac_var = 0.0
+    for i in range(N):
+        for j, dij in dist[i].items():
+            weight = max(1 - dij / h, 0)  # Bartlett kernel
+            hac_var += weight * g[i] * g[j]
+    
+    hac_var /= N
+    se_hac = np.sqrt(hac_var)
 
     return avg_effects, se_hac
-    

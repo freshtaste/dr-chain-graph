@@ -37,7 +37,7 @@ from drnet import compute_avg_effects_std_from_raw
 import numpy as np
 from tqdm import tqdm
 
-def compute_stats(res_list_array_dr1, res_list_array_dr2, ground_truth):
+def compute_stats(res_list_array_dr1, res_list_array_dr2, ground_truth, adj_matrix):
     """
     Compute statistics from the results list. 
     res_list_array_dr: (n_sim, N, n_rep, 4) -> (n_sim, N, 4)
@@ -55,10 +55,10 @@ def compute_stats(res_list_array_dr1, res_list_array_dr2, ground_truth):
         res_spillover = res_list_array_dr1[i,:,cols_raw.index('psi_0_gamma')] - res_list_array_dr1[i,:,cols_raw.index('psi_zero')]
         
 
-        avg_effects_avg, se_hac_avg = compute_avg_effects_std_from_raw(res_avg)
-        avg_effects_direct, se_hac_direct = compute_avg_effects_std_from_raw(res_direct)
-        avg_effects_indirect, se_hac_indirect = compute_avg_effects_std_from_raw(res_indirect)
-        avg_effects_spillover, se_hac_spillover = compute_avg_effects_std_from_raw(res_spillover)
+        avg_effects_avg, se_hac_avg = compute_avg_effects_std_from_raw(res_avg, adj_matrix)
+        avg_effects_direct, se_hac_direct = compute_avg_effects_std_from_raw(res_direct, adj_matrix)
+        avg_effects_indirect, se_hac_indirect = compute_avg_effects_std_from_raw(res_indirect, adj_matrix)
+        avg_effects_spillover, se_hac_spillover = compute_avg_effects_std_from_raw(res_spillover, adj_matrix)
 
         # coverage
         coverage[i,0] = (avg_effects_avg - 1.96*se_hac_avg < ground_truth['average']) & (ground_truth['average'] < avg_effects_avg + 1.96*se_hac_avg)
