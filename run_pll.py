@@ -3,8 +3,8 @@ from drnet_em import doubly_robust_em
 from autognet import evaluate_autognet_via_agc_effect
 import numpy as np
 
-column_names = ['average', 'direct_effect', 'spillover_effect', 
-               'psi_0_gamma', 'psi_zero', 'psi_1_gamma']
+column_names = ['average', 'direct_effect', 'spillover_effect', 'psi_1_gamma',
+               'psi_0_gamma', 'psi_zero']
 
 def run_dr(A_chain, L_chain, Y_chain, adj, i):
     """

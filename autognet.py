@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from agcEffect import agc_effect
+from dgp import agcEffect
 
 def prepare_features_outcome_model(Y, A, L, adj_matrix):
     N = adj_matrix.shape[0]
@@ -83,6 +83,8 @@ def extract_parameters_from_autog_models(models, adj_matrix):
     
     return tau, rho, nu, beta
 
+from dgp import sample_Y1
+
 def evaluate_autognet_via_agc_effect(adj_matrix, Y, A, L, treatment_allocation=0.5, R=10, burnin=5, seed=0):
     """
     Fit autognet models and evaluate causal effects using agc_effect.
@@ -96,7 +98,7 @@ def evaluate_autognet_via_agc_effect(adj_matrix, Y, A, L, treatment_allocation=0
     # print("nu:", nu)
     # print("beta:", beta)
     
-    ret = agc_effect(
+    ret = agcEffect(
         adj_matrix=adj_matrix,
         tau=tau,
         rho=rho,
@@ -105,7 +107,8 @@ def evaluate_autognet_via_agc_effect(adj_matrix, Y, A, L, treatment_allocation=0
         treatment_allocation=treatment_allocation,
         R=R,
         burnin_R=burnin,
-        seed=seed
+        seed=seed,
+        sample_Y_func=sample_Y1
     )
 
     # print("psi_zero:", ret['psi_zero'])

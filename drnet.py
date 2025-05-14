@@ -195,8 +195,9 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         psi_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
             X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
-            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all')
+            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all') * 0
             w = I[:,i] / pi_vec[:, i]
+            w[pi_vec[:, i]<1e-2] = 0
             w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
             psi = beta_hat + w_norm * (Y - beta_hat)
             psi_gamma[:, i] = psi.copy()
@@ -206,8 +207,9 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         psi_1_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
             X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
-            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_1')
+            beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_1') * 0
             w = I[:,i] / pi_1_vec[:, i]
+            w[pi_1_vec[:, i]<1e-2] = 0
             w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
             psi = beta_hat + w_norm * (Y - beta_hat)
             psi_1_gamma[:, i] = psi.copy()
@@ -220,8 +222,9 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     psi_0_gamma = np.zeros((N, num_rep))
     for i in range(num_rep):
         X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
-        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_0')
+        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_0') * 0
         w = I[:,i] / pi_0_vec[:, i]
+        w[pi_0_vec[:, i]<1e-2] = 0
         w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
         psi = beta_hat + w_norm * (Y - beta_hat)
         psi_0_gamma[:, i] = psi.copy()
@@ -232,8 +235,9 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         pi_zero_vec = numerator / denominator[:, None]
         psi_zero = np.zeros((N,))
         X_y_eval = build_design_matrix_Y(a_mat, L, Y, adj_matrix)
-        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all_0')
+        beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all_0') * 0
         w = I[:,0] / pi_zero_vec[:, 0] 
+        w[pi_zero_vec[:, 0]<1e-2] = 0
         w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
         psi = beta_hat + w_norm * (Y - beta_hat)
         psi_zero = psi.copy()
