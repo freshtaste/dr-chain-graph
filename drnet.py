@@ -100,7 +100,7 @@ def get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_m
     N = adj_matrix.shape[0]
     aGL = (a_mat.T * GL).T
     
-    GL_neighbour = np.array([np.sum(aGL[[i]+neighbours[i]], axis=0) for i in range(N)])
+    GL_neighbour = np.zeros((N, a_mat.shape[1]))
     aa_n, aa_out = np.zeros((N, a_mat.shape[1])), np.zeros((N, a_mat.shape[1]))
     I = np.zeros((N, a_mat.shape[1]))
     for i in range(N):
@@ -108,14 +108,17 @@ def get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_m
         # compute indicator
         if Atype == 'all' or Atype == 'all_0':
             I[i] = np.all(a_mat[ni] == A[ni].reshape(-1,1), axis=0).astype(int)
+            GL_neighbour[i] = np.sum(aGL[[i]+neighbours[i]], axis=0)
         elif Atype == 'ind_treat_0':
             a_mat_local = a_mat[ni].copy()
             a_mat_local[0] = 0
             I[i] = np.all(a_mat_local == A[ni].reshape(-1,1), axis=0).astype(int)
+            GL_neighbour[i] = np.sum(aGL[neighbours[i]], axis=0)
         elif Atype == 'ind_treat_1':
             a_mat_local = a_mat[ni].copy()
             a_mat_local[0] = 1
             I[i] = np.all(a_mat_local == A[ni].reshape(-1,1), axis=0).astype(int)
+            GL_neighbour[i] += np.sum(aGL[neighbours[i]], axis=0) + GL[i]
         vec_n = a_mat[ni][:,I[i]==1].copy()
 
         if Atype == 'ind_treat_1':
@@ -133,7 +136,6 @@ def get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_m
         adj_max_n_out = adj_matrix[ni, :][:, nout]
         aa_out[i, I[i]==1] = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
         
-    
     numerator = np.exp(GL_neighbour + gamma[7]*aa_n + gamma[7]*aa_out)
     return numerator, I
 
@@ -168,20 +170,26 @@ def get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, n_r
     
     return denominator
 
-def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False, psi_0_gamma_only=False):
+def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False, psi_0_gamma_only=False,
+                  mispec=None):
     np.random.seed(seed)
     
     # fit models
-    X_y = build_design_matrix_Y(A, L, Y, adj_matrix)
+    L_a, L_y = L.copy(), L.copy()
+    if mispec == 'outcome':
+        L_y = np.random.binomial(1, 0.5, size=L_y.shape)
+    elif mispec == 'treatment':
+        L_a = np.random.binomial(1, 0.5, size=L_a.shape)
+    X_y = build_design_matrix_Y(A, L_y, Y, adj_matrix)
     model_y = fit_logistic_model(X_y, Y)
-    X_a = build_design_matrix_A(L, A, adj_matrix)
+    X_a = build_design_matrix_A(L_a, A, adj_matrix)
     model_a = fit_logistic_model(X_a, A)
     
     # compute pi
     gamma = np.concatenate([model_a.intercept_, model_a.coef_.flatten()])
     N = adj_matrix.shape[0]
     neighbours, neighbours_2hop = get_2hop_neighbors(adj_matrix)
-    L_nb = get_neighbor_summary(L, adj_matrix)
+    L_nb = get_neighbor_summary(L_a, adj_matrix)
     GL = gamma[0] + L.dot(np.array([gamma[1], gamma[3], gamma[5]])) \
         + L_nb.dot(np.array([gamma[2], gamma[4], gamma[6]]))
         
@@ -194,10 +202,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         pi_vec = numerator_vec / denominator[:, None]
         psi_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
-            X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
+            X_y_eval = build_design_matrix_Y(a_mat[:,i], L_y, Y, adj_matrix)
             beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all') * 0
             w = I[:,i] / pi_vec[:, i]
-            w[pi_vec[:, i]<1e-2] = 0
+            #w[pi_vec[:, i]<1e-3] = 0
             w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
             psi = beta_hat + w_norm * (Y - beta_hat)
             psi_gamma[:, i] = psi.copy()
@@ -206,10 +214,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         pi_1_vec = numerator / denominator[:, None]
         psi_1_gamma = np.zeros((N, num_rep))
         for i in range(num_rep):
-            X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
+            X_y_eval = build_design_matrix_Y(a_mat[:,i], L_y, Y, adj_matrix)
             beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_1') * 0
             w = I[:,i] / pi_1_vec[:, i]
-            w[pi_1_vec[:, i]<1e-2] = 0
+            #w[pi_1_vec[:, i]<1e-3] = 0
             w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
             psi = beta_hat + w_norm * (Y - beta_hat)
             psi_1_gamma[:, i] = psi.copy()
@@ -221,10 +229,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
     pi_0_vec = numerator / denominator[:, None]
     psi_0_gamma = np.zeros((N, num_rep))
     for i in range(num_rep):
-        X_y_eval = build_design_matrix_Y(a_mat[:,i], L, Y, adj_matrix)
+        X_y_eval = build_design_matrix_Y(a_mat[:,i], L_y, Y, adj_matrix)
         beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='ind_treat_0') * 0
         w = I[:,i] / pi_0_vec[:, i]
-        w[pi_0_vec[:, i]<1e-2] = 0
+        #w[pi_0_vec[:, i]<1e-3] = 0
         w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
         psi = beta_hat + w_norm * (Y - beta_hat)
         psi_0_gamma[:, i] = psi.copy()
@@ -234,10 +242,10 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
         numerator, I = get_numerator_pi_vec(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, Atype='all_0')
         pi_zero_vec = numerator / denominator[:, None]
         psi_zero = np.zeros((N,))
-        X_y_eval = build_design_matrix_Y(a_mat, L, Y, adj_matrix)
+        X_y_eval = build_design_matrix_Y(a_mat, L_y, Y, adj_matrix)
         beta_hat = compute_beta_probs(X_y_eval, model_y, Atype='all_0') * 0
         w = I[:,0] / pi_zero_vec[:, 0] 
-        w[pi_zero_vec[:, 0]<1e-2] = 0
+        #w[pi_zero_vec[:, 0]<1e-3] = 0
         w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
         psi = beta_hat + w_norm * (Y - beta_hat)
         psi_zero = psi.copy()
