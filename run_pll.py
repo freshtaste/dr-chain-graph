@@ -17,11 +17,11 @@ def run_dr(A_chain, L_chain, Y_chain, adj, i, mispec=None):
     
     return ret_array
 
-def run_dr_em(A_chain, L_chain, Y_chain, adj, i):
+def run_dr_em(A_chain, L_chain, Y_chain, adj, i, mispec=None):
     """
     Run doubly robust estimator
     """
-    ret_i = doubly_robust_em(A_chain[i], L_chain[i], Y_chain[i], adj)
+    ret_i = doubly_robust_em(A_chain[i], L_chain[i], Y_chain[i], adj, mispec=mispec)
     ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
     # save results
     np.save(f'run/run_dr_em/drnet_em_{i}.npy', ret_array)
@@ -56,11 +56,12 @@ def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, psi_0_ga
     
     return ret_array
 
-def run_dr_em_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation):
+def run_dr_em_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, mispec=None):
     """
     Run doubly robust estimator
     """
-    ret_i = doubly_robust_em(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True)
+    ret_i = doubly_robust_em(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True,
+                             mispec=mispec)
     ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], len(cols_raw)))
     for k in range(len(cols_raw)):
         ret_array[:, k] = ret_i[cols_raw[k]].copy()

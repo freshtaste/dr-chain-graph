@@ -135,7 +135,7 @@ def get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, n_r
     
     return denominator
 
-def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, seed=1, return_raw=False, psi_0_gamma_only=False,
+def doubly_robust_em(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=2000, seed=1, return_raw=False,
                   mispec=None):
     np.random.seed(seed)
     
@@ -171,15 +171,16 @@ def doubly_robust(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=1000, s
             X_y_eval = X_y.copy()
             X_y_eval[:, 0] = a
             X_y_eval[:, 1] = g
-            beta_hat_vec[:, a, g] = model_y.predict_proba(X_y)[:, 1]
+            beta_hat_vec[:, a, g] = model_y.predict_proba(X_y_eval)[:, 1]
 
     A_nb = get_neighbor_summary(A.reshape(-1, 1), adj_matrix).flatten()
     psi_vec = np.zeros(pi_vec.shape)
     for a in [0, 1]:
         for g in range(pi_vec.shape[2]):
             I = ((A == a) & (A_nb == g)).astype(int)
-            pi = pi_vec[:, a, g]
-            beta_hat = beta_hat_vec[:, a, g]
+            pi = pi_vec[:, a, g].copy()
+            pi[I==0] = 1
+            beta_hat = beta_hat_vec[:, a, g].copy() * 0
             psi_vec[:,a,g] = beta_hat + I / pi * (Y - beta_hat)
 
     # compute all 1
