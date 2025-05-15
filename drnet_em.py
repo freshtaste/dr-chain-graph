@@ -70,16 +70,17 @@ def compute_beta_probs(X_y, model_y, Atype='ind_treat_1'):
         raise ValueError("Invalid Atype specified.")
     return model_y.predict_proba(X_y)[:, 1]
 
-def get_numerator_pi_em(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix):
+def get_numerator_pi_em_new(a_mat_dict, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix):
     N = adj_matrix.shape[0]
-    num_rep = a_mat.shape[1]
-    aGL = (a_mat.T * GL).T
     
     max_neighbours = adj_matrix.sum(axis=1).max()
     numerator = np.zeros((N, 2, max_neighbours+1))
     for i in range(N):
         ni = [i]+neighbours[i]
-        vec_n = a_mat[ni].copy()
+        if len(ni) > 1:
+            a_mat = a_mat_dict[len(neighbours[i])]
+            vec_n = np.zeros((len(ni), a_mat.shape[1]))
+            vec_n[1:, :] = a_mat.copy()
         
         # compute outter product
         for a in [0, 1]:
@@ -94,46 +95,53 @@ def get_numerator_pi_em(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_ma
             adj_max_n_out = adj_matrix[ni, :][:, nout]
             aa_out_i = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
             
-            GL_neighbour_i = np.sum(aGL[neighbours[i]], axis=0) + GL[i]*a
+            GL_neighbour_i = GL[ni].dot(vec_n)
             num_vec_i = np.exp(GL_neighbour_i + gamma[7]*aa_n_i + gamma[7]*aa_out_i)
             
             num_neighbours = len(neighbours[i])
             vec_treated_neighbours = vec_n[1:].sum(axis=0)
             for g in range(num_neighbours+1):
                 # average over reps with num_neigh==g
-                numerator[i, a, g] = np.sum(num_vec_i[vec_treated_neighbours==g])/num_rep*(2**num_neighbours)
+                numerator[i, a, g] = np.sum(num_vec_i[vec_treated_neighbours==g])
     return numerator
 
-def get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, n_rep=1000):
+def get_norm_constant_new(a_mat_dict, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix, n_rep=1000):
     # compute denominator
     N = adj_matrix.shape[0]
-    a_mat = np.random.binomial(1, 0.5, size=(N, n_rep))
-    aGL = (a_mat.T * GL).T
-    GL_neighbour = np.array([np.sum(aGL[[i]+neighbours[i]], axis=0) for i in range(N)])
-    aa_n, aa_out = np.zeros((N, n_rep)), np.zeros((N, n_rep))
+    denominator = np.zeros((N,))
     for i in range(N):
         ni = [i]+neighbours[i]
-        vec_n = a_mat[ni] # 10 by 1000
+        vec_n = a_mat_dict[len(ni)]
+        
         # compute outter product to get a thousand 10 by 10
         mat_n = np.einsum('ik,jk->ijk', vec_n, vec_n)
         adj_max_n = adj_matrix[ni, :][:, ni]
-        aa_n[i] = (mat_n * adj_max_n[:, :, None]).sum(axis=(0, 1))/2
+        aa_n_i = (mat_n * adj_max_n[:, :, None]).sum(axis=(0, 1))/2
         
         nout = neighbours_2hop[i]
         vec_n_out = A[nout] # 790 by 1
         mat_n_out = np.einsum('ik,j->ijk', vec_n, vec_n_out)
         adj_max_n_out = adj_matrix[ni, :][:, nout]
-        aa_out[i] = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
+        aa_out_i = (mat_n_out * adj_max_n_out[:, :, None]).sum(axis=(0, 1))
+
+        GL_neighbour_i = GL[ni].dot(vec_n)
+        num_vec_i = np.exp(GL_neighbour_i + gamma[7]*aa_n_i + gamma[7]*aa_out_i)
     
-    denominator = np.exp(GL_neighbour + gamma[7]*aa_n + gamma[7]*aa_out)
-    
-    # approximate the sum in the denominator
-    num_neighbours = np.array([len(neighbours[i]) for i in range(N)])
-    group_size = num_neighbours + 1
-    num_a_group = 2**group_size
-    denominator = np.mean(denominator, axis=1) * num_a_group
+        denominator[i] = num_vec_i.sum()
     
     return denominator
+
+from itertools import product
+
+def generate_all_binary_vectors(max_n):
+    binary_dict = {}
+    for n in range(1, max_n + 1):
+        # Generate all binary combinations
+        combinations = list(product([0, 1], repeat=n))
+        # Transpose to get shape (n, 2^n)
+        a_mat = np.array(combinations).T
+        binary_dict[n] = a_mat
+    return binary_dict
 
 def doubly_robust_em(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=2000, seed=1, return_raw=False,
                   mispec=None):
@@ -157,12 +165,12 @@ def doubly_robust_em(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=2000
     L_nb = get_neighbor_summary(L_a, adj_matrix)
     GL = gamma[0] + L.dot(np.array([gamma[1], gamma[3], gamma[5]])) \
         + L_nb.dot(np.array([gamma[2], gamma[4], gamma[6]]))
-        
-    denominator = get_norm_constant(A, GL, neighbours, neighbours_2hop, gamma, adj_matrix)
+    
+    a_mat_dict = generate_all_binary_vectors(adj_matrix.sum(axis=1).max()+1)
+    denominator = get_norm_constant_new(a_mat_dict, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix)
     
     # compute the influence function
-    a_mat = np.random.binomial(1, treatment_allocation, size=(Y.shape[0], num_rep))
-    numerator_vec = get_numerator_pi_em(a_mat, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix)
+    numerator_vec = get_numerator_pi_em_new(a_mat_dict, A, GL, neighbours, neighbours_2hop, gamma, adj_matrix)
     pi_vec = numerator_vec / denominator[:, None, None] # N by 2 by max_neighbours
 
     beta_hat_vec = np.zeros(pi_vec.shape)
@@ -180,7 +188,7 @@ def doubly_robust_em(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=2000
             I = ((A == a) & (A_nb == g)).astype(int)
             pi = pi_vec[:, a, g].copy()
             pi[I==0] = 1
-            beta_hat = beta_hat_vec[:, a, g].copy() * 0
+            beta_hat = beta_hat_vec[:, a, g].copy()
             psi_vec[:,a,g] = beta_hat + I / pi * (Y - beta_hat)
 
     # compute all 1
