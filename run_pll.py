@@ -6,11 +6,11 @@ import numpy as np
 column_names = ['average', 'direct_effect', 'spillover_effect', 'psi_1_gamma',
                'psi_0_gamma', 'psi_zero']
 
-def run_dr(A_chain, L_chain, Y_chain, adj, i):
+def run_dr(A_chain, L_chain, Y_chain, adj, i, mispec=None):
     """
     Run doubly robust estimator
     """
-    ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj)
+    ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, mispec=mispec)
     ret_array = np.array([ret_i[column_names[i]] for i in range(len(column_names))])
     # save results
     np.save(f'run/run_dr/drnet_{i}.npy', ret_array)
@@ -42,12 +42,12 @@ def run_autognet(A_chain, L_chain, Y_chain, adj, i):
 
 cols_raw = ['psi_gamma', 'psi_zero', 'psi_1_gamma', 'psi_0_gamma']
 
-def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, psi_0_gamma_only):
+def run_dr_raw(A_chain, L_chain, Y_chain, adj, i, treatment_allocation, psi_0_gamma_only, mispec=None):
     """
     Run doubly robust estimator
     """
     ret_i = doubly_robust(A_chain[i], L_chain[i], Y_chain[i], adj, treatment_allocation=treatment_allocation, seed=1, return_raw=True,
-                          psi_0_gamma_only=psi_0_gamma_only)
+                          psi_0_gamma_only=psi_0_gamma_only, mispec=mispec)
     ret_array = np.zeros((ret_i[cols_raw[0]].shape[0], len(cols_raw)))
     for k in range(len(cols_raw)):
         ret_array[:, k] = ret_i[cols_raw[k]].copy()
