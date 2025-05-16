@@ -189,7 +189,9 @@ def doubly_robust_em(A, L, Y, adj_matrix, treatment_allocation=0.7, num_rep=2000
             pi = pi_vec[:, a, g].copy()
             pi[I==0] = 1
             beta_hat = beta_hat_vec[:, a, g].copy()
-            psi_vec[:,a,g] = beta_hat + I / pi * (Y - beta_hat)
+            w = I / pi
+            w_norm = w/np.sum(w)*N if np.sum(w) > 0 else 0
+            psi_vec[:,a,g] = beta_hat + w_norm * (Y - beta_hat)
 
     # compute all 1
     prob_allocation_vec = np.zeros((N, pi_vec.shape[2]))
