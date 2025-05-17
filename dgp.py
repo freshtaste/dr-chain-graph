@@ -176,7 +176,7 @@ def sample_network_chain(
     if sample_Y_func is None:
         raise ValueError("You must provide a sampling function for Y (sample_Y_func).")
 
-    for m in tqdm(range(R + burnin_R)):
+    for m in range(R + burnin_R):
         L = sample_L(L, adj_matrix, tau, rho, nu)
         if Atype[0] == 'gen':
             A = sample_A(A, L, adj_matrix, gamma)
