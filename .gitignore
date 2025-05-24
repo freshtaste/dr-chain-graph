@@ -1,3 +1,4 @@
 *.npy
 *.pyc
 .DS_Store
+*.rds
